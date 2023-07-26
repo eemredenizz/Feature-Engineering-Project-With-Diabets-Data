@@ -223,8 +223,36 @@ df.isnull().sum()
 # Creating new Features
 #####################################
 df.head()
-corr
 
+df.describe().T
+
+df.groupby("Outcome")["DiabetesPedigreeFunction"].mean()
+
+df.loc[df["Pregnancies"] < 4, "Pregnancies_new"] = "low"
+
+df.loc[df["Pregnancies"] > 4, "Pregnancies_new"] = "high"
+
+df.loc[df["BMI"] <= 18.5, "BMI_CAT"] = "weak"
+
+df.loc[(df["BMI"] > 18.5) & (df["BMI"] <= 25), "BMI_CAT"] = "normal"
+
+df.loc[(df["BMI"] > 25) & (df["BMI"] <= 30), "BMI_CAT"] = "fat"
+
+df.loc[(df["BMI"] > 30) & (df["BMI"] <= 35), "BMI_CAT"] = "obesity_low"
+
+df.loc[df["BMI"] > 35, "BMI_CAT"] = "obesity_high"
+
+df["Glucose_CAT"] = pd.qcut(df["Glucose"], 5, ["very_low","low", "normal", "high", "very_high"])
+
+df["Insulin_CAT"] = pd.qcut(df["Insulin"], 5, ["very_low","low", "normal", "high", "very_high"])
+
+df["BloodPresure_CAT"] = pd.qcut(df["BloodPressure"], 5, ["very_low","low", "normal", "high", "very_high"])
+
+df["Age_X_DiabetesPedigreeFunction"] = df["Age"] * df["DiabetesPedigreeFunction"]
+
+df["Age_X_BloodPressure"] = df["Age"] * df["BloodPressure"]
+
+#
 df["Pregnancies_x_DPF"] = df["DiabetesPedigreeFunction"] * df["Pregnancies"]
 
 df["SkinThickness_x_DPF"] = df["SkinThickness"] * df["DiabetesPedigreeFunction"] / 100
@@ -243,6 +271,14 @@ df["BMI_x_Blood_pressure"] = df["BMI"] * df["BloodPressure"] / 100
 
 df["Glucose_x_Insulin"] = df["Glucose"] / df["Insulin"]
 
+df["Insulin_x_DPF"] = df["Insulin"] * df["DiabetesPedigreeFunction"]
+
+df["Insulin_y_DPF"] = df["Insulin"] / df["DiabetesPedigreeFunction"]
+
+df["Glucose_x_DPF"] = df["Glucose"] * df["DiabetesPedigreeFunction"]
+
+df["Glucose_y_DPF"] = df["Glucose"] / df["DiabetesPedigreeFunction"]
+
 df["Glucose_Insulin_x_DPF"] = df["Glucose_x_Insulin"] * df["DiabetesPedigreeFunction"]
 
 df["Skin_Thickness_x_Blood_pressure"] = df["SkinThickness"] * df["BloodPressure"] / 100
@@ -253,24 +289,45 @@ df["Skin_Thickness_x_Age"] = df["SkinThickness"] / df["Age"]
 
 df["Skin_Thickness_x_BMI"] = df["SkinThickness"] / df["BMI"]
 
+
 ##################################
 # Encoding
 ##################################
-# Kategorik kolon bulunmadığından dolayı direkt Standartlaştırma işlemine geçiyoruz.
-# Since there is no categorical column, we proceed directly to the Standardization process.
+cat_cols, num_cols, cat_but_car = grab_col_names(df)
 
+##### Binary Encoding
+binary_cols = [col for col in cat_cols if df[col].nunique() == 2]
+
+def label_encoder(dataframe, binary_col):
+    labelencoder = LabelEncoder()
+    dataframe[binary_col] = labelencoder.fit_transform(dataframe[binary_col])
+    return dataframe
+
+for col in binary_cols:
+    label_encoder(df, col)
+###### One-Hot Encoding
+ohe_cols = [col for col in cat_cols if col not in binary_cols]
+
+def one_hot_encoder(dataframe, ohe_col, drop_first=True):
+    dataframe = pd.get_dummies(dataframe,columns= ohe_col, drop_first= drop_first)
+    return dataframe
+
+df = one_hot_encoder(df, ohe_cols)
+
+df.head()
 #############################################
 # Standart Scaler
 #############################################
 scaler = StandardScaler()
+
+df = df.replace([np.inf, -np.inf], np.nan).dropna()
+
 
 df[num_cols] = scaler.fit_transform(df[num_cols])
 
 ##############################################
 # Model
 ##############################################
-
-df = df.replace([np.inf, -np.inf], np.nan).dropna()
 
 from sklearn.model_selection import train_test_split
 from sklearn.ensemble import RandomForestClassifier
@@ -291,3 +348,22 @@ print("\nConfusion Matrix:")
 print(confusion)
 print("\nClassification Report:")
 print(classification_rep)
+
+df.head()
+df.describe().T
+
+#######################
+def plot_importance(model, features, num=len(X), save=False):
+    feature_imp = pd.DataFrame({'Value': model.feature_importances_, 'Feature': features.columns})
+    plt.figure(figsize=(10, 10))
+    sns.set(font_scale=1)
+    sns.barplot(x="Value", y="Feature", data=feature_imp.sort_values(by="Value",
+                                                                      ascending=False)[0:num])
+    plt.title('Features')
+    plt.tight_layout()
+    plt.show()
+    if save:
+        plt.savefig('importances.png')
+
+
+plot_importance(model, X_train)
